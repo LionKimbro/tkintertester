@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tkintertester"
+version = "0.1.0"
+description = "A minimal, event-loop-native test harness for Tkinter GUI applications"
+license = "CC0-1.0"
+authors = [
+    {name = "Lion Kimbro"}
+]
+requires-python = ">=3.8"
+keywords = ["tkinter", "testing", "gui", "test-harness"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: User Interfaces",
+]
+
+[project.urls]
+Repository = "https://github.com/lion/tkintertester"
+
+[tool.setuptools.packages.find]
+where = ["src"]
