@@ -1,8 +1,0 @@
-LICENSE
-pyproject.toml
-src/tkintertester/__init__.py
-src/tkintertester/harness.py
-src/tkintertester.egg-info/PKG-INFO
-src/tkintertester.egg-info/SOURCES.txt
-src/tkintertester.egg-info/dependency_links.txt
-src/tkintertester.egg-info/top_level.txt
