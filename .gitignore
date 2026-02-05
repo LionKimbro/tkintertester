@@ -1,29 +1,22 @@
-# Byte-compiled / optimized / DLL files
+# Python bytecode
 __pycache__/
-*.py[cod]
-*$py.class
-
-# Distribution / packaging
-**/*.egg-info/
-*.egg
-dist/
-build/
-wheels/
-
-# Installer logs
-pip-log.txt
+*.pyc
+*.pyo
+*.pyd
 
 # Virtual environments
 venv/
+.env/
 .venv/
-env/
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
 
-# OS
+# Editor / OS junk
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log

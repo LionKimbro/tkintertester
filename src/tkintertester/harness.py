@@ -101,10 +101,10 @@ def _advance_to_next_test():
         # All tests finished
         if g["exit_after_tests_executed"]:
             g["root"].quit()
-        else:
-            # Transition into normal runtime
-            if g["app_entry"]:
-                g["app_entry"]()
+        
+        # Transition into normal runtime
+        if g["app_entry"]:
+            g["app_entry"]()
         
         return
 
