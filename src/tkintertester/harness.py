@@ -18,10 +18,17 @@ g = {
     "start_time": None,               # Timestamp when current test started
     "test_index": 0,                  # Index into tests list
     "app_entry": None,                # Application entry function
-    "app_exit": None,                 # Application exit function
+    "app_reset": None,                # Application reset function (for next test)
     "timeout_ms": 5000,               # Default timeout per test (ms)
+    "exit_after_tests_executed": None
 }
 
+
+def set_timeout(timeout_ms):
+    g["timeout_ms"] = timeout_ms
+
+def set_resetfn(app_reset):
+    g["app_reset"] = app_reset
 
 def add_test(title, steps):
     """Register a test by appending to the global tests list."""
@@ -35,20 +42,43 @@ def add_test(title, steps):
     tests.append(test)
 
 
-def run(app_entry, app_exit, timeout_ms=5000):
-    """Initialize harness and run all tests."""
+def run_host(app_entry, flags=""):
+    """Harness owns lifecycle and hosts application tests.
+
+    Runs all tests, if any.
+    Calls resetfn (declared with set_resetfn) between test executions.
+
+    If "x" in flags, (e"x"it), it exits after running all tests.
+    """
     g["app_entry"] = app_entry
-    g["app_exit"] = app_exit
+    g["exit_after_tests_executed"] = "x" in flags
+
+    root = tkinter.Tk()
+    root.withdraw()
+
+    _attach_harness()
+
+    root.mainloop()
+
+
+def attach_harness(root, timeout_ms=5000):
+    """Attach harness to an already-running application."""
+
+    # attach mode does NOT set entry/exit
+    _attach_harness(root, timeout_ms)
+
+
+def _attach_harness(root, timeout_ms):
+    """Attach harness scheduling onto an existing Tk root."""
+
+    g["root"] = root
     g["timeout_ms"] = timeout_ms
     g["test_index"] = 0
 
-    g["root"] = tkinter.Tk()
-    g["root"].withdraw()
-
     if tests:
-        _advance_to_next_test()
+        root.after_idle(_advance_to_next_test)
 
-    g["root"].mainloop()
+
 
 
 def _advance_to_next_test():

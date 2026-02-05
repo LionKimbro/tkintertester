@@ -1,4 +1,9 @@
 {
+  "document": {
+    "document_id": "tkintertester.spec.v0.1",
+    "title": "tkintertester Specification",
+    "purpose": "specify tkintertester -- a minimal, event-loop-native test harness for Tkinter GUI applications without async"
+  },
   "spec_metadata": {
     "name": "tkintertester",
     "document_id": "tkintertester.spec.v0.1",
