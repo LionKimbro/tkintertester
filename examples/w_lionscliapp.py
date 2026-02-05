@@ -40,6 +40,16 @@ def app_entry():
 
     app_state["toplevel"] = win
 
+    app_state["toplevel"].protocol(
+        "WM_DELETE_WINDOW",
+        handle_when_user_closes_window
+    )
+
+
+def handle_when_user_closes_window():
+    app_state["toplevel"].destroy()
+    harness.g["root"].quit()
+
 
 def app_reset():
     """Reset application between tests."""

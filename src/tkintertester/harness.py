@@ -87,8 +87,7 @@ def _attach_harness(root):
     g["root"] = root
     g["test_index"] = 0
 
-    if tests:
-        root.after_idle(_advance_to_next_test)
+    root.after_idle(_advance_to_next_test)
 
 
 def _advance_to_next_test():
