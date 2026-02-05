@@ -1,0 +1,307 @@
+{
+  "document": {
+    "document_id": "tkintertester.spec.v0.1",
+    "title": "tkintertester Specification",
+    "purpose": "specify tkintertester -- a minimal, event-loop-native test harness for Tkinter GUI applications without async"
+  },
+  "spec_metadata": {
+    "name": "tkintertester",
+    "document_id": "tkintertester.spec.v0.1",
+    "version": "0.1",
+    "author": "Lion Kimbro",
+    "purpose": "A minimal, event-loop-native test harness for Tkinter GUI applications without async.",
+    "design_principles": [
+      "Single Tk mainloop per process",
+      "All tests run in a single process on a single thread.",
+      "No async/await",
+      "No classes",
+      "No use of the Python 'global' keyword",
+      "All scalar mutable state stored in a single g dictionary",
+      "Tests execute inside the real Tk event loop",
+      "Step-based execution driven by return values",
+      "Harness does not own or track application widgets",
+      "Sharp-tool model: internal g is authoritative and may be mutated by power users"
+    ]
+  },
+  "module_structure": {
+    "harness_module": {
+      "filename": "harness.py",
+      "responsibility": "Owns test execution, scheduling, timeouts, and result recording. Does not own application widgets."
+    },
+    "application_module": {
+      "responsibility": "Owns application lifecycle via entry() and reset() functions. In host mode, harness calls entry() to create an app instance; between tests harness calls reset() if provided. In attach mode, harness does not call entry/reset."
+    },
+    "test_module": {
+      "responsibility": "Defines tests, steps, and any helper functions for interacting with application widgets."
+    }
+  },
+  "global_state_model": {
+    "tests": {
+      "type": "list",
+      "location": "module-level (outside g)",
+      "description": "Ordered list of test dictionaries. Never rebound. Test dictionaries are updated with results."
+    },
+    "g": {
+      "type": "dict",
+      "location": "harness module",
+      "description": "Container for all scalar mutable global state required by the harness.",
+      "keys": {
+        "root": {
+          "type": "tk.Tk | any object supporting .after(...)",
+          "description": "Scheduler surface used for after() callbacks. In host mode this is a hidden tk.Tk root created and withdrawn by the harness. In attach mode this is the provided root."
+        },
+        "current_test": {
+          "type": "dict | null",
+          "description": "Reference to the currently executing test dictionary; null when no test is active."
+        },
+        "current_step_index": {
+          "type": "int",
+          "description": "Index of the currently executing step within the current test."
+        },
+        "test_done": {
+          "type": "bool",
+          "description": "Flag indicating the current test has completed (success/fail/timeout)."
+        },
+        "current_timeout_after_id": {
+          "type": "str | null",
+          "description": "Tk after() identifier for the currently scheduled timeout callback."
+        },
+        "start_time": {
+          "type": "float | null",
+          "description": "Timestamp marking the start of the current test execution."
+        },
+        "test_index": {
+          "type": "int",
+          "description": "Index into the global tests list indicating which test will run next."
+        },
+        "app_entry": {
+          "type": "callable|null",
+          "description": "Nullary application entry function used in host mode to create a new app instance. Not used in attach mode."
+        },
+        "app_reset": {
+          "type": "callable|null",
+          "description": "Nullary reset function called between tests in host mode to tear down the prior app instance. Not used in attach mode."
+        },
+        "timeout_ms": {
+          "type": "int",
+          "description": "Per-test timeout in milliseconds."
+        },
+        "exit_after_tests_executed": {
+          "type": "bool|null",
+          "description": "If true, harness will quit the Tk mainloop after tests are completed. If false, host mode transitions into normal runtime by calling app_entry() once after tests."
+        },
+        "show_results_in_tk_after_tests_executed": {
+          "type": "bool|null",
+          "description": "If true, harness will display results in a Tk Toplevel after tests complete (using show_results())."
+        }
+      }
+    }
+  },
+  "test_data_model": {
+    "test_object": {
+      "type": "dict",
+      "required_keys": {
+        "title": {
+          "type": "string",
+          "description": "Human-readable name of the test."
+        },
+        "steps": {
+          "type": "list",
+          "description": "Ordered list of step functions (nullary callables)."
+        }
+      },
+      "result_keys": {
+        "status": {
+          "type": "string | null",
+          "allowed_values": [
+            "success",
+            "fail",
+            "timeout",
+            null
+          ],
+          "description": "Final outcome of the test."
+        },
+        "fail_message": {
+          "type": "string | null",
+          "description": "Human-readable failure reason, if any."
+        },
+        "exception": {
+          "type": "string | null",
+          "description": "Captured exception traceback, if any."
+        }
+      }
+    }
+  },
+  "step_function_contract": {
+    "signature": "step() -> (action, value)",
+    "description": "Each step is a nullary function invoked by the harness. It returns a tuple describing how execution should proceed. Step functions must not block; they must return control to the Tk event loop on every invocation.",
+    "return_actions": {
+      "next": {
+        "value": "None | int",
+        "meaning": [
+          "Advance to the next step.",
+          "If value is None: advance immediately.",
+          "If value is int: advance after value milliseconds."
+        ]
+      },
+      "wait": {
+        "value": "int",
+        "meaning": "Repeat the same step after value milliseconds."
+      },
+      "fail": {
+        "value": "string",
+        "meaning": "Fail the test immediately with the given reason."
+      },
+      "success": {
+        "value": "None | int",
+        "meaning": [
+          "Declare the test successful immediately.",
+          "If value is int: delay finalization by value milliseconds."
+        ]
+      },
+      "goto": {
+        "value": "int",
+        "meaning": [
+          "Set current_step_index = value and continue execution immediately.",
+          "This is a mechanical program-counter jump; value is a numeric step index."
+        ]
+      }
+    },
+    "default_completion_rule": "If all steps are exhausted without an explicit 'success' or 'fail', the test is considered successful."
+  },
+  "execution_model": {
+    "overview": [
+      "Harness executes inside a single Tk event loop.",
+      "Tests are executed sequentially.",
+      "Each test runs as a state machine driven by step return values.",
+      "All scheduling is done via root.after().",
+      "Timeouts are enforced per test."
+    ],
+    "modes": {
+      "host_mode": {
+        "entrypoint": "run_host(app_entry, flags='')",
+        "behavior": [
+          "Create a hidden tk.Tk root, withdraw it, attach harness, and enter mainloop.",
+          "If tests exist: run them sequentially.",
+          "Before each test: call app_entry() to create a new app instance (typically as a Toplevel rooted under g.root).",
+          "Between tests: if app_reset is set via set_resetfn(), call it after each test completes to tear down the prior instance.",
+          "After tests complete:",
+          "  - If g.show_results_in_tk_after_tests_executed is true: show_results()",
+          "  - If g.exit_after_tests_executed is true: root.quit()",
+          "  - Else: call app_entry() once to create a final runtime instance and continue running."
+        ],
+        "flags": {
+          "x": "exit after tests executed (sets g.exit_after_tests_executed true)",
+          "s": "show results in a Tk window after tests executed (sets g.show_results_in_tk_after_tests_executed true)"
+        }
+      },
+      "attach_mode": {
+        "entrypoint": "attach_harness(root, flags='')",
+        "behavior": [
+          "Attach harness scheduling onto an already-running Tk application.",
+          "Does not set or call app_entry or app_reset.",
+          "Does not own or terminate the application's mainloop.",
+          "Runs tests (if any) against the currently-running app instance."
+        ],
+        "flags": {
+          "s": "show results in a Tk window after tests executed",
+          "x": "disallowed; attach_harness must raise an error if 'x' is provided"
+        }
+      }
+    }
+  },
+  "timeout_handling": {
+    "model": "Single active timeout per test",
+    "mechanism": [
+      "Schedule timeout callback via root.after(timeout_ms).",
+      "Store returned after_id in g.current_timeout_after_id.",
+      "Cancel timeout on test completion.",
+      "On timeout: mark test with status 'timeout' and fail_message 'Test timed out'."
+    ]
+  },
+  "test_authoring_helpers": {
+    "add_test": {
+      "name": "add_test",
+      "purpose": "Construct a test dictionary conforming to the test data model and register it by appending it to the global tests list.",
+      "signature": "add_test(title, steps) -> None",
+      "arguments": {
+        "title": {
+          "type": "string",
+          "description": "Human-readable name of the test."
+        },
+        "steps": {
+          "type": "list",
+          "description": "Ordered list of step functions (nullary callables) defining the test behavior."
+        }
+      },
+      "behavior": [
+        "Creates a new test dictionary with required keys.",
+        "Initializes result fields (status, fail_message, exception) to null.",
+        "Defensively copies the steps list when constructing the test object.",
+        "Appends the test dictionary to the global tests list."
+      ]
+    },
+    "set_timeout": {
+      "name": "set_timeout",
+      "purpose": "Set the per-test timeout duration.",
+      "signature": "set_timeout(timeout_ms) -> None",
+      "arguments": {
+        "timeout_ms": {
+          "type": "int",
+          "description": "Timeout in milliseconds."
+        }
+      },
+      "behavior": [
+        "Sets g.timeout_ms."
+      ]
+    },
+    "set_resetfn": {
+      "name": "set_resetfn",
+      "purpose": "Set the application reset function used between tests in host mode.",
+      "signature": "set_resetfn(app_reset) -> None",
+      "arguments": {
+        "app_reset": {
+          "type": "callable",
+          "description": "Nullary function to tear down the app instance created by app_entry()."
+        }
+      },
+      "behavior": [
+        "Sets g.app_reset."
+      ]
+    }
+  },
+  "results_reporting": {
+    "canonical_representation": "get_results() returns a formatted string. All other reporting functions delegate to get_results().",
+    "functions": {
+      "get_results": {
+        "signature": "get_results() -> string",
+        "purpose": "Return a formatted string summarizing test outcomes."
+      },
+      "print_results": {
+        "signature": "print_results() -> None",
+        "purpose": "Print get_results() to stdout."
+      },
+      "show_results": {
+        "signature": "show_results() -> None",
+        "purpose": "Display get_results() in a simple Tk Toplevel window (requires g.root)."
+      },
+      "write_results": {
+        "signature": "write_results(filepath) -> None",
+        "purpose": "Write get_results() to a file."
+      }
+    }
+  },
+  "non_goals": [
+    "Harness does not discover widgets",
+    "Harness does not simulate OS-level input",
+    "Harness does not integrate directly with pytest",
+    "Use of async/await or coroutine-based control flow",
+    "Class-based harness design"
+  ],
+  "future_extensions": [
+    "Optional authoring helpers (click, type, assert_text)",
+    "pytest integration wrapper",
+    "Structured logging and reporting",
+    "Parallel test execution (not recommended for Tk)"
+  ]
+}

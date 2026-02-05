@@ -18,9 +18,15 @@ widgets = {}
 def entry():
     """Set up the counter app."""
     app["count"] = 0
+
     app["toplevel"] = tkinter.Toplevel(harness.g["root"])
     app["toplevel"].title("Counter")
 
+    app["toplevel"].protocol(
+        "WM_DELETE_WINDOW",
+        handle_when_user_closes_window
+    )
+    
     widgets["label"] = ttk.Label(app["toplevel"], text="0")
     widgets["label"].grid(row=0, column=0, padx=20, pady=10)
 
@@ -31,11 +37,17 @@ def entry():
     )
     widgets["button"].grid(row=1, column=0, padx=20, pady=10)
 
-
-def exit():
-    """Tear down the counter app."""
+def handle_when_user_closes_window():
     app["toplevel"].destroy()
-    app["toplevel"] = None
+    harness.g["root"].quit()
+
+
+def reset():
+    """Reset app between tests."""
+    if app["toplevel"] is not None:
+        app["toplevel"].destroy()
+        app["toplevel"] = None
+
     widgets.clear()
 
 
@@ -47,7 +59,6 @@ def handle_when_user_clicks_increment():
 # Tests
 
 def test_initial_state():
-    """Verify counter starts at zero."""
     def step_check_initial_value():
         if widgets["label"].cget("text") == "0":
             return ("success", None)
@@ -57,7 +68,6 @@ def test_initial_state():
 
 
 def test_increment_once():
-    """Click button once, verify counter is 1."""
     def step_click_button():
         widgets["button"].invoke()
         return ("next", None)
@@ -71,7 +81,6 @@ def test_increment_once():
 
 
 def test_increment_three_times():
-    """Click button three times, verify counter is 3."""
     def step_click_three_times():
         widgets["button"].invoke()
         widgets["button"].invoke()
@@ -87,9 +96,7 @@ def test_increment_three_times():
 
 
 def test_visual_slow_increment():
-    """Slow test so you can watch the counter increment."""
     def step_show_window():
-        # Let the window appear
         return ("next", 500)
 
     def step_click_and_wait_1():
@@ -106,7 +113,7 @@ def test_visual_slow_increment():
 
     def step_verify_and_pause():
         if widgets["label"].cget("text") == "3":
-            return ("success", 500)  # pause before closing
+            return ("success", 500)
         return ("fail", f"Expected '3', got '{widgets['label'].cget('text')}'")
 
     return [
@@ -119,12 +126,15 @@ def test_visual_slow_increment():
 
 
 if __name__ == "__main__":
+    harness.set_resetfn(reset)
+    harness.set_timeout(5000)
+
     harness.add_test("Initial state is zero", test_initial_state())
     harness.add_test("Increment once", test_increment_once())
     harness.add_test("Increment three times", test_increment_three_times())
     harness.add_test("Visual: slow increment", test_visual_slow_increment())
 
-    harness.run(entry, exit, timeout_ms=5000)
+    harness.run_host(entry, "x")  # You can take out "x" too, to just leave it running.
 
     # Print results
     print("\nResults:")

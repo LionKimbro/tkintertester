@@ -20,7 +20,8 @@ g = {
     "app_entry": None,                # Application entry function
     "app_reset": None,                # Application reset function (for next test)
     "timeout_ms": 5000,               # Default timeout per test (ms)
-    "exit_after_tests_executed": None
+    "exit_after_tests_executed": None,
+    "show_results_in_tk_after_tests_executed": None
 }
 
 
@@ -49,42 +50,62 @@ def run_host(app_entry, flags=""):
     Calls resetfn (declared with set_resetfn) between test executions.
 
     If "x" in flags, (e"x"it), it exits after running all tests.
+    If "s" in flags, ("s"how), show results in a Toplevel after running all tests.
+      (DO NOT USE "s" with "x".)
     """
     g["app_entry"] = app_entry
     g["exit_after_tests_executed"] = "x" in flags
+    g["show_results_in_tk_after_tests_executed"] = "s" in flags
 
     root = tkinter.Tk()
     root.withdraw()
 
-    _attach_harness()
+    _attach_harness(root)
 
     root.mainloop()
 
 
-def attach_harness(root, timeout_ms=5000):
+def attach_harness(root, flags=""):
     """Attach harness to an already-running application."""
 
+    g["app_entry"] = None
+    g["app_reset"] = None
+    g["exit_after_tests_executed"] = False
+
+    if "x" in flags:
+        raise RuntimeError("may not use flag 'x' with attach_harness")
+
+    g["show_results_in_tk_after_tests_executed"] = "s" in flags
+    
     # attach mode does NOT set entry/exit
-    _attach_harness(root, timeout_ms)
+    _attach_harness(root)
 
 
-def _attach_harness(root, timeout_ms):
+def _attach_harness(root):
     """Attach harness scheduling onto an existing Tk root."""
 
     g["root"] = root
-    g["timeout_ms"] = timeout_ms
     g["test_index"] = 0
 
     if tests:
         root.after_idle(_advance_to_next_test)
 
 
-
-
 def _advance_to_next_test():
     """Set up and begin the next test in the queue."""
     if g["test_index"] >= len(tests):
-        g["root"].quit()
+
+        if g["show_results_in_tk_after_tests_executed"]:
+            show_results()
+        
+        # All tests finished
+        if g["exit_after_tests_executed"]:
+            g["root"].quit()
+        else:
+            # Transition into normal runtime
+            if g["app_entry"]:
+                g["app_entry"]()
+        
         return
 
     g["current_test"] = tests[g["test_index"]]
@@ -96,10 +117,10 @@ def _advance_to_next_test():
         g["timeout_ms"],
         _handle_when_current_test_times_out
     )
-
+    
     if g["app_entry"]:
         g["app_entry"]()
-
+    
     g["root"].after(0, _execute_current_step)
 
 
@@ -125,19 +146,27 @@ def _execute_current_step():
 
     if action == "fail":
         _mark_fail(value)
+
     elif action == "success":
         if value is None:
             _mark_success()
         else:
             g["root"].after(value, _mark_success)
+
     elif action == "next":
         g["current_step_index"] += 1
-        if value is None:
-            g["root"].after(0, _execute_current_step)
-        else:
-            g["root"].after(value, _execute_current_step)
+        delay = 0 if value is None else value
+        g["root"].after(delay, _execute_current_step)
+
     elif action == "wait":
         g["root"].after(value, _execute_current_step)
+
+    elif action == "goto":
+        g["current_step_index"] = value
+        g["root"].after(0, _execute_current_step)
+
+    else:
+        _mark_fail(f"Unknown action: {action}")
 
 
 def _mark_success():
@@ -177,8 +206,65 @@ def _finish_current_test():
         g["root"].after_cancel(g["current_timeout_after_id"])
         g["current_timeout_after_id"] = None
 
-    if g["app_exit"]:
-        g["app_exit"]()
+    if g["app_reset"]:
+        g["app_reset"]()
 
     g["test_index"] += 1
     g["root"].after(0, _advance_to_next_test)
+
+
+def get_results():
+    """Return a formatted string summarizing test results."""
+    lines = []
+    counts = {}
+
+    lines.append("Results:")
+    for test in tests:
+        status = test.get("status") or "unknown"
+        status_u = status.upper()
+        counts[status] = counts.get(status, 0) + 1
+
+        lines.append(f"  [{status_u}] {test['title']}")
+        if test.get("fail_message"):
+            lines.append(f"         {test['fail_message']}")
+
+    if tests:
+        lines.append("")
+        summary = ", ".join(
+            f"{counts.get(k, 0)} {k}"
+            for k in sorted(counts)
+        )
+        lines.append(f"Summary: {summary}")
+
+    return "\n".join(lines)
+
+
+def print_results():
+    """Print test results to stdout."""
+    print(get_results())
+
+
+def write_results(filepath):
+    """Write test results to a file."""
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(get_results())
+
+
+def show_results():
+    """Display test results in a Tk window."""
+    if g["root"] is None:
+        raise RuntimeError("No Tk root available for show_results()")
+
+    win = tkinter.Toplevel(g["root"])
+    win.title("tkintertester results")
+
+    text = tkinter.Text(
+        win,
+        width=80,
+        height=24,
+        wrap="word"
+    )
+    text.pack(fill="both", expand=True, padx=10, pady=10)
+
+    text.insert("end", get_results())
+    text.config(state="disabled")
