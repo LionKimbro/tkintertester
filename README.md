@@ -10,6 +10,8 @@ Tkinter doesn't play well with traditional testing approaches:
 
 2. **Tk runs a blocking event loop.** You can't just "call" your GUI from test code and inspect it—that blocks the mainloop or requires threading/async complexity.
 
+3. **Tk silently swallows exceptions.** Exceptions in callbacks get printed to stderr but don't propagate—your test keeps running even though something failed.
+
 ## The Solution
 
 Run tests *inside* the Tk event loop itself.
@@ -18,6 +20,7 @@ Run tests *inside* the Tk event loop itself.
 - Tests execute as sequences of **step functions** scheduled via `root.after()`
 - Step functions return control immediately—they never block
 - The harness manages test progression, timeouts, and results
+- Exceptions in callbacks are caught and fail the current test
 
 ## Design Principles
 
@@ -44,7 +47,7 @@ app = {"count": 0, "toplevel": None}
 widgets = {}
 
 def entry():
-    """Set up the app for a test."""
+    """Set up the app."""
     app["count"] = 0
     app["toplevel"] = tkinter.Toplevel(harness.g["root"])
     widgets["label"] = ttk.Label(app["toplevel"], text="0")
@@ -55,8 +58,8 @@ def entry():
     )
     widgets["button"].grid(row=1, column=0)
 
-def exit():
-    """Tear down after a test."""
+def reset():
+    """Reset between tests."""
     app["toplevel"].destroy()
     widgets.clear()
 
@@ -79,10 +82,65 @@ def test_increment():
 
 # Run
 harness.add_test("Increment counter", test_increment())
-harness.run(entry, exit, timeout_ms=5000)
+harness.set_resetfn(reset)
+harness.set_timeout(5000)
+harness.run_host(entry, flags="x")
+harness.print_results()
+```
 
-for test in harness.tests:
-    print(f"[{test['status'].upper()}] {test['title']}")
+## API Reference
+
+### Test Registration
+
+```python
+harness.add_test(title, steps)
+```
+Register a test. `steps` is a list of nullary step functions.
+
+### Configuration
+
+```python
+harness.set_timeout(timeout_ms)
+```
+Set the timeout for each test (default: 5000ms).
+
+```python
+harness.set_resetfn(app_reset)
+```
+Set a function to call between tests (to reset/clean up UI state).
+
+### Running Tests
+
+```python
+harness.run_host(app_entry, flags="")
+```
+Harness creates a hidden Tk root and owns the lifecycle. Runs all registered tests, calling `app_entry()` before each test and `app_reset()` (if set) after each test. After all tests complete:
+- If `"x"` in flags: exit mainloop
+- Otherwise: call `app_entry()` one more time to transition into normal runtime
+
+Flags:
+- `"x"` — exit after tests complete
+- `"s"` — show results in a Tk window after tests complete
+
+```python
+harness.attach_harness(root, flags="")
+```
+Attach the harness to an already-running application's root window. Tests run immediately. The `"x"` flag is not allowed (you can't exit an app you don't own).
+
+### Results
+
+```python
+harness.get_results()      # Returns formatted string
+harness.print_results()    # Prints to stdout
+harness.write_results(filepath)  # Writes to file
+harness.show_results()     # Displays in a Tk window
+```
+
+### Accessing State
+
+```python
+harness.tests    # List of test dictionaries (with results after execution)
+harness.g        # Harness state dictionary (includes g["root"])
 ```
 
 ## Step Function Contract
@@ -94,25 +152,41 @@ Each step is a nullary function that returns `(action, value)`:
 | `"next"` | `None` | Advance to next step immediately |
 | `"next"` | `int` | Advance after N milliseconds |
 | `"wait"` | `int` | Retry this step after N milliseconds |
+| `"goto"` | `int` | Jump to step at index N |
 | `"success"` | `None` | Test passed |
 | `"success"` | `int` | Test passed, finalize after N ms |
 | `"fail"` | `str` | Test failed with message |
 
 If all steps complete without explicit `"success"` or `"fail"`, the test is considered successful.
 
+## Exception Handling
+
+The harness overrides `root.report_callback_exception` to catch exceptions in Tk callbacks. If an exception occurs during a test (in a button handler, `after()` callback, event binding, etc.), the test is immediately marked as failed with the exception traceback captured.
+
 ## Test Lifecycle
+
+**With `run_host()`:**
 
 1. Harness creates a hidden Tk root and enters `mainloop()`
 2. For each test:
-   - Call your `entry()` function (create windows, widgets)
+   - Call `app_entry()` (create windows, widgets)
    - Execute steps until success, failure, or timeout
    - Record result in the test object
-   - Call your `exit()` function (destroy windows, clean up)
-3. When all tests complete, exit `mainloop()`
+   - Call `app_reset()` if set (clean up for next test)
+3. After all tests:
+   - If `"s"` flag: show results window
+   - If `"x"` flag: exit mainloop
+   - Otherwise: call `app_entry()` to transition into normal app runtime
+
+**With `attach_harness()`:**
+
+1. Attach to existing root window
+2. Run tests immediately
+3. After all tests: app continues running (no exit)
 
 ## Two-Track Testing Strategy
 
-For larger applications (20+ files), consider splitting tests:
+For larger applications (20+ files), split tests into two tracks:
 
 - **Track 1: Logic tests** — Pure functions, data processing, validation. Use pytest normally; no Tk needed.
 - **Track 2: GUI tests** — Widget behavior, user interactions. Use tkintertester.
@@ -121,48 +195,36 @@ This separation encourages keeping business logic out of GUI code.
 
 ## Structuring Your App for Testing
 
-Design your app with `entry()` and `exit()` functions. When run directly, the app calls its own entry and mainloop. Tests import the module and use the harness.
+Design your app with `entry()` and `reset()` functions. The CLI or main script sets up the root and calls entry. Tests use the harness.
 
 ```python
 # myapp/main.py
-import tkinter
-from tkinter import ttk
+import tkinter as tk
 
 g = {"count": 0}
 widgets = {}
-app = {"toplevel": None}
+app = {"root": None, "toplevel": None}
 
 def entry():
-    """Create the UI."""
+    """Create the UI. app['root'] must be set before calling."""
     g["count"] = 0
-    app["toplevel"] = tkinter.Toplevel()
-    widgets["label"] = ttk.Label(app["toplevel"], text="0")
+    app["toplevel"] = tk.Toplevel(app["root"])
+    widgets["label"] = tk.Label(app["toplevel"], text="0")
     widgets["label"].grid(row=0, column=0)
-    widgets["button"] = ttk.Button(
+    widgets["button"] = tk.Button(
         app["toplevel"], text="+1",
         command=handle_when_user_clicks_increment
     )
     widgets["button"].grid(row=1, column=0)
 
-def exit():
-    """Tear down the UI."""
+def reset():
+    """Tear down the UI between tests."""
     app["toplevel"].destroy()
     widgets.clear()
 
 def handle_when_user_clicks_increment():
     g["count"] += 1
     widgets["label"].config(text=str(g["count"]))
-
-if __name__ == "__main__":
-    root = tkinter.Tk()
-    root.withdraw()
-    entry()
-    root.mainloop()
-```
-
-Running the app directly:
-```bash
-python myapp/main.py
 ```
 
 ## Recommended Project Layout
@@ -174,7 +236,7 @@ myproject/
   src/
     myapp/
       __init__.py
-      main.py          # has entry(), exit(), if __name__ == "__main__"
+      main.py          # has entry(), reset()
       logic.py         # pure functions, no Tk dependency
   tests/               # pytest: logic tests (Track 1)
     test_logic.py
@@ -210,11 +272,14 @@ def test_increment():
 
     return [step_click, step_verify]
 
-harness.add_test("Increment counter", test_increment())
-harness.run(app.entry, app.exit, timeout_ms=5000)
+def app_entry():
+    app.app["root"] = harness.g["root"]
+    app.entry()
 
-for test in harness.tests:
-    print(f"[{test['status'].upper()}] {test['title']}")
+harness.add_test("Increment counter", test_increment())
+harness.set_resetfn(app.reset)
+harness.run_host(app_entry, flags="x")
+harness.print_results()
 ```
 
 Running tests:

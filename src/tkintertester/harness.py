@@ -87,6 +87,14 @@ def _attach_harness(root):
     g["root"] = root
     g["test_index"] = 0
 
+    def _report_callback_exception(exc, val, tb):
+        if g.get("current_test") and not g.get("test_done"):
+            message = f"Tk callback exception: {val}"
+            _mark_fail(message, "".join(traceback.format_exception(exc, val, tb)))
+        else:
+            traceback.print_exception(exc, val, tb)
+
+    root.report_callback_exception = _report_callback_exception
     root.after_idle(_advance_to_next_test)
 
 
