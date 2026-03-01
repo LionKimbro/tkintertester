@@ -289,6 +289,10 @@ python -m pytest                    # runs logic tests (Track 1)
 python guitests/test_main_window.py # runs GUI tests (Track 2)
 ```
 
+## Full Documentation
+
+[docs/reference.md](docs/reference.md)
+
 ## License
 
 CC0 1.0 Universal — Public Domain
