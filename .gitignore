@@ -14,6 +14,9 @@ build/
 dist/
 *.egg-info/
 
+# Claude Code
+.claude/
+
 # Editor / OS junk
 .DS_Store
 Thumbs.db
