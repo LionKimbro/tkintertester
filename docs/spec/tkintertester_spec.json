@@ -96,6 +96,10 @@
         "show_results_in_tk_after_tests_executed": {
           "type": "bool|null",
           "description": "If true, harness will display results in a Tk Toplevel after tests complete (using show_results())."
+        },
+        "exit_requested": {
+          "type": "bool",
+          "description": "Set to true by harness.quit() when the app signals it wants to exit during a test that allows quit. Reset to false at the start of every test (including after the last one). Step functions may inspect this flag to verify that the app called quit(). Has no effect on post-suite behavior; only exit_after_tests_executed governs whether the harness quits after all tests."
         }
       }
     }
@@ -111,6 +115,12 @@
         "steps": {
           "type": "list",
           "description": "Ordered list of step functions (nullary callables)."
+        }
+      },
+      "configuration_keys": {
+        "allows_quit": {
+          "type": "bool",
+          "description": "If true, the test has declared that it expects the app to call harness.quit() during execution. The harness will not auto-fail the test if quit() is called while this flag is set. Set by passing flag 'q' to add_test()."
         }
       },
       "result_keys": {
@@ -213,6 +223,20 @@
       }
     }
   },
+  "quit_handling": {
+    "purpose": "Allow the application to signal a desire to exit without reaching directly into the harness internals. The application calls harness.quit() instead of get_root().quit(), and the harness decides what to do based on context.",
+    "function": {
+      "name": "quit",
+      "signature": "quit() -> None",
+      "behavior": {
+        "during_a_test_allows_quit": "Sets g.exit_requested = True. The test continues normally. Step functions may inspect g.exit_requested to verify the quit occurred. The harness does not quit the mainloop during the test.",
+        "during_a_test_no_allows_quit": "Sets g.exit_requested = True, then immediately fails the current test with the message 'app called quit() unexpectedly during test'.",
+        "outside_a_test": "Calls root.quit() immediately. This is the normal runtime path when the user closes the application window."
+      },
+      "reset": "g.exit_requested is reset to False at the start of every test (including after the last test finishes). It has no effect on post-suite behavior."
+    },
+    "design_note": "The application must never call get_root().quit() directly. All exit requests must go through harness.quit() so the harness can intercept them correctly during tests. This keeps the mainloop lifecycle entirely under harness control."
+  },
   "timeout_handling": {
     "model": "Single active timeout per test",
     "mechanism": [
@@ -226,7 +250,7 @@
     "add_test": {
       "name": "add_test",
       "purpose": "Construct a test dictionary conforming to the test data model and register it by appending it to the global tests list.",
-      "signature": "add_test(title, steps) -> None",
+      "signature": "add_test(title, steps, flags='') -> None",
       "arguments": {
         "title": {
           "type": "string",
@@ -235,11 +259,16 @@
         "steps": {
           "type": "list",
           "description": "Ordered list of step functions (nullary callables) defining the test behavior."
+        },
+        "flags": {
+          "type": "string",
+          "description": "Optional flags modifying test behavior. 'q': test expects the app to call harness.quit() during execution; the harness will not auto-fail on quit."
         }
       },
       "behavior": [
         "Creates a new test dictionary with required keys.",
         "Initializes result fields (status, fail_message, exception) to null.",
+        "Sets allows_quit = True if 'q' is in flags, False otherwise.",
         "Defensively copies the steps list when constructing the test object.",
         "Appends the test dictionary to the global tests list."
       ]

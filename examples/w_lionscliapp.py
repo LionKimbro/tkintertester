@@ -48,7 +48,7 @@ def app_entry():
 
 def handle_when_user_closes_window():
     app_state["toplevel"].destroy()
-    harness.g["root"].quit()
+    harness.quit()
 
 
 def app_reset():

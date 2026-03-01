@@ -39,7 +39,7 @@ def entry():
 
 def handle_when_user_closes_window():
     app["toplevel"].destroy()
-    harness.g["root"].quit()
+    harness.quit()
 
 
 def reset():

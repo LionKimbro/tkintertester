@@ -21,7 +21,8 @@ g = {
     "app_reset": None,                # Application reset function (for next test)
     "timeout_ms": 5000,               # Default timeout per test (ms)
     "exit_after_tests_executed": None,
-    "show_results_in_tk_after_tests_executed": None
+    "show_results_in_tk_after_tests_executed": None,
+    "exit_requested": False,          # set by harness.quit()
 }
 
 
@@ -31,16 +32,38 @@ def set_timeout(timeout_ms):
 def set_resetfn(app_reset):
     g["app_reset"] = app_reset
 
-def add_test(title, steps):
-    """Register a test by appending to the global tests list."""
+def add_test(title, steps, flags=""):
+    """Register a test by appending to the global tests list.
+
+    flags:
+      "q" -- test expects the app to call harness.quit(); won't auto-fail on quit.
+    """
     test = {
         "title": title,
         "steps": list(steps),  # defensive copy
         "status": None,
         "fail_message": None,
         "exception": None,
+        "allows_quit": "q" in flags,
     }
     tests.append(test)
+
+
+def quit():
+    """Signal that the application wants to exit.
+
+    During a test:
+      - If the test declared "q" (allows_quit): sets g["exit_requested"] and returns.
+        The test continues and may inspect the flag; the harness will quit after tests.
+      - Otherwise: fails the current test immediately with an unexpected-quit message.
+    Outside a test (runtime): calls root.quit() immediately.
+    """
+    g["exit_requested"] = True
+    if g["current_test"] is not None and not g["test_done"]:
+        if not g["current_test"]["allows_quit"]:
+            _mark_fail("app called quit() unexpectedly during test")
+    else:
+        g["root"].quit()
 
 
 def run_host(app_entry, flags=""):
@@ -100,19 +123,22 @@ def _attach_harness(root):
 
 def _advance_to_next_test():
     """Set up and begin the next test in the queue."""
+    g["exit_requested"] = False
+
     if g["test_index"] >= len(tests):
 
         if g["show_results_in_tk_after_tests_executed"]:
             show_results()
-        
+
         # All tests finished
         if g["exit_after_tests_executed"]:
             g["root"].quit()
-        
+            return
+
         # Transition into normal runtime
         if g["app_entry"]:
             g["app_entry"]()
-        
+
         return
 
     g["current_test"] = tests[g["test_index"]]

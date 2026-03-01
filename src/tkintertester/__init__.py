@@ -9,6 +9,7 @@ Public API intentionally small:
     - add_test
     - set_timeout
     - set_resetfn
+    - quit
     - print_results
     - write_results
     - show_results
@@ -24,6 +25,7 @@ from .harness import (
     add_test,
     set_timeout,
     set_resetfn,
+    quit,
     get_results,
     print_results,
     write_results,
@@ -37,6 +39,7 @@ __all__ = [
     "add_test",
     "set_timeout",
     "set_resetfn",
+    "quit",
     "get_results",
     "print_results",
     "write_results",
