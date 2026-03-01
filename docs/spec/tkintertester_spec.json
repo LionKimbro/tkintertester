@@ -1,6 +1,6 @@
 {
   "document": {
-    "document_id": "tkintertester.spec.v0.1",
+    "document-id": "tkintertester.spec.v0.1",
     "title": "tkintertester Specification",
     "purpose": "specify tkintertester -- a minimal, event-loop-native test harness for Tkinter GUI applications without async"
   },
@@ -21,7 +21,10 @@
       "Step-based execution driven by return values",
       "Harness does not own or track application widgets",
       "Sharp-tool model: internal g is authoritative and may be mutated by power users"
-    ]
+    ],
+    "provenance": {
+      "design-with-Wing-Cat": "https://chatgpt.com/c/697f0bc5-e080-8328-89f8-6100b8d736de"
+    }
   },
   "module_structure": {
     "harness_module": {

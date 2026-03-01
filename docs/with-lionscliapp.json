@@ -1,0 +1,130 @@
+{
+  "document": {
+    "document_id": "tkintertester.with_lionscliapp.spec.v0.1",
+    "title": "Using tkintertester with lionscliapp",
+    "source": "with-lionscliapp.md",
+    "purpose": "Define the canonical integration pattern between lionscliapp and tkintertester while preserving lifecycle separation and unified execution.",
+    "created_date": "2026-02-11",
+    "intended_use": [
+      "LLM-assisted coding",
+      "architectural reasoning",
+      "developer reference"
+    ]
+  },
+  "core_principle": {
+    "lionscliapp_owns": [
+      "CLI parsing",
+      "application identity",
+      "configuration",
+      "command dispatch",
+      "lifecycle phases"
+    ],
+    "tkintertester_owns": [
+      "test scheduling",
+      "step execution",
+      "timeout handling",
+      "result recording"
+    ],
+    "layer_relationship": "Systems operate at different layers without lifecycle conflict."
+  },
+  "execution_model": {
+    "model": "Unified execution via run command",
+    "rules": [
+      "tkintertester is invoked from inside the normal run command",
+      "No separate test command exists",
+      "Tests are optionally registered",
+      "Harness behavior is controlled via runtime flags"
+    ]
+  },
+  "lifecycle_constraints": {
+    "lionscliapp_phases": [
+      "declaring",
+      "running",
+      "shutdown"
+    ],
+    "tk_start_phase": "running",
+    "rules": [
+      "Tkinter must not start during declaration phase"
+    ]
+  },
+  "command_layout": {
+    "command": "run",
+    "description": "Single unified run command executes application and optional tests."
+  },
+  "runtime_configuration": {
+    "flags": {
+      "runtime.tests.enabled": {
+        "type": "boolean",
+        "meaning": "Register tests before harness execution."
+      },
+      "runtime.tests.show": {
+        "type": "boolean",
+        "meaning": "Show test results within tkinter after tests complete."
+      },
+      "runtime.tests.exit": {
+        "type": "boolean",
+        "meaning": "Exit program after tests complete."
+      }
+    }
+  },
+  "integration_pattern": {
+    "description": "Unified run command that conditionally registers tests and invokes tkintertester harness.",
+    "canonical_code": "def cmd_run():\n\n    flags = \"\"\n\n    if app.ctx[\"runtime.tests.show\"]:\n        flags += \"s\"\n\n    if app.ctx[\"runtime.tests.exit\"]:\n        flags += \"x\"\n\n    if app.ctx[\"runtime.tests.enabled\"]:\n        register_tests()\n\n    harness.run_host(app_entry, flags)"
+  },
+  "application_lifecycle_functions": {
+    "app_entry": "Responsible for building UI, and GUI app initialization (post-CLI setup).",
+    "app_reset": "Responsible for destroying UI, and resetting state to the start state.",
+    "reset_registration": "harness.set_resetfn(app_reset)"
+  },
+  "host_model": {
+    "owner": "tkintertester",
+    "description": "tkintertester owns the Tk lifecycle once run_host() is invoked.",
+    "behavior": [
+      "create hidden root",
+      "enter mainloop",
+      "schedule advance_to_next_test once"
+    ],
+    "advance_decision_logic": [
+      "run tests if present",
+      "start application",
+      "exit when requested"
+    ]
+  },
+  "attach_mode": {
+    "default": false,
+    "description": "Optional capability allowing tests to run against an already-running application.",
+    "properties": [
+      "does not call app_entry",
+      "does not call app_reset",
+      "assumes application already running"
+    ]
+  },
+  "responsibilities_summary": {
+    "lionscliapp": [
+      "decides command invocation",
+      "builds runtime context",
+      "registers tests when enabled",
+      "launches harness"
+    ],
+    "tkintertester": [
+      "executes tests",
+      "schedules steps",
+      "records results"
+    ]
+  },
+  "hard_rules": [
+    "Do not start Tk during declaration phase.",
+    "Only one Tk mainloop per process.",
+    "tkintertester operates in single-threaded environment."
+  ],
+  "invariants": [
+    "Exactly one run command exists for execution.",
+    "Harness is always invoked through cmd_run.",
+    "Tests modify behavior but do not change entrypoint."
+  ],
+  "philosophy": [
+    "lionscliapp decides when execution begins.",
+    "tkintertester decides what happens inside Tk.",
+    "Configuration defines behavior."
+  ]
+}
