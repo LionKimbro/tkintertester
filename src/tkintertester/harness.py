@@ -1,5 +1,6 @@
 """harness.py - Test execution, scheduling, timeouts, and result recording."""
 
+import json
 import tkinter
 import time
 import traceback
@@ -246,8 +247,19 @@ def _finish_current_test():
     g["root"].after(0, _advance_to_next_test)
 
 
-def get_results():
-    """Return a formatted string summarizing test results."""
+def get_results(flags=""):
+    """Return a formatted string summarizing test results.
+
+    flags:
+      "J" -- return a JSON string instead of a human-readable summary.
+              Steps are represented by their function names.
+    """
+    if "J" in flags:
+        return _get_results_json()
+    return _get_results_text()
+
+
+def _get_results_text():
     lines = []
     counts = {}
 
@@ -272,19 +284,45 @@ def get_results():
     return "\n".join(lines)
 
 
-def print_results():
-    """Print test results to stdout."""
-    print(get_results())
+def _get_results_json():
+    rows = []
+    for test in tests:
+        rows.append({
+            "title":       test["title"],
+            "steps":       [fn.__name__ for fn in test["steps"]],
+            "allows_quit": test["allows_quit"],
+            "status":      test["status"],
+            "fail_message": test["fail_message"],
+            "exception":   test["exception"],
+        })
+    return json.dumps(rows, indent=2)
 
 
-def write_results(filepath):
-    """Write test results to a file."""
+def print_results(flags=""):
+    """Print test results to stdout.
+
+    flags:
+      "J" -- print JSON output.
+    """
+    print(get_results(flags))
+
+
+def write_results(filepath, flags=""):
+    """Write test results to a file.
+
+    flags:
+      "J" -- write JSON output.
+    """
     with open(filepath, "w", encoding="utf-8") as f:
-        f.write(get_results())
+        f.write(get_results(flags))
 
 
-def show_results():
-    """Display test results in a Tk window."""
+def show_results(flags=""):
+    """Display test results in a Tk window.
+
+    flags:
+      "J" -- display JSON output.
+    """
     if g["root"] is None:
         raise RuntimeError("No Tk root available for show_results()")
 
@@ -299,5 +337,5 @@ def show_results():
     )
     text.pack(fill="both", expand=True, padx=10, pady=10)
 
-    text.insert("end", get_results())
+    text.insert("end", get_results(flags))
     text.config(state="disabled")
