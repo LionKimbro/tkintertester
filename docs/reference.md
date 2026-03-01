@@ -109,7 +109,7 @@ Also called once after all tests complete if not exiting.
 | Flag | Meaning |
 |---|---|
 | `"x"` | Exit after tests complete. The mainloop quits and `run_host` returns. |
-| `"s"` | Show a results window after tests complete (calls `show_results()`). Do not combine with `"x"`. |
+| `"s"` | Show a results window after tests complete. The program does not transition into normal runtime. The mainloop exits when the results window is closed. |
 
 ```python
 harness.run_host(entry)          # run tests, then continue as normal app
@@ -306,7 +306,7 @@ running (i.e., `g["root"]` must be set). Accepts the same flags as
 `get_results()`.
 
 Also called automatically after tests if the `"s"` flag was passed to
-`run_host` or `attach_harness`.
+`run_host` or `attach_harness`. Returns the `Toplevel` window it creates.
 
 ```python
 harness.show_results()        # human-readable window

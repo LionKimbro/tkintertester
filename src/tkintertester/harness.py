@@ -129,7 +129,9 @@ def _advance_to_next_test():
     if g["test_index"] >= len(tests):
 
         if g["show_results_in_tk_after_tests_executed"]:
-            show_results()
+            win = show_results()
+            win.protocol("WM_DELETE_WINDOW", g["root"].quit)
+            return
 
         # All tests finished
         if g["exit_after_tests_executed"]:
@@ -339,3 +341,5 @@ def show_results(flags=""):
 
     text.insert("end", get_results(flags))
     text.config(state="disabled")
+
+    return win

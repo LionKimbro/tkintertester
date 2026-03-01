@@ -199,8 +199,8 @@
           "Before each test: call app_entry() to create a new app instance (typically as a Toplevel rooted under g.root).",
           "Between tests: if app_reset is set via set_resetfn(), call it after each test completes to tear down the prior instance.",
           "After tests complete:",
-          "  - If g.show_results_in_tk_after_tests_executed is true: show_results()",
-          "  - If g.exit_after_tests_executed is true: root.quit()",
+          "  - If g.show_results_in_tk_after_tests_executed is true: show_results(), wire WM_DELETE_WINDOW to root.quit(), and return. The program does not transition into normal runtime; the mainloop exits when the results window is closed.",
+          "  - Else if g.exit_after_tests_executed is true: root.quit()",
           "  - Else: call app_entry() once to create a final runtime instance and continue running."
         ],
         "flags": {
@@ -314,8 +314,8 @@
         "purpose": "Print get_results() to stdout."
       },
       "show_results": {
-        "signature": "show_results() -> None",
-        "purpose": "Display get_results() in a simple Tk Toplevel window (requires g.root)."
+        "signature": "show_results(flags='') -> Toplevel",
+        "purpose": "Display get_results() in a simple Tk Toplevel window (requires g.root). Returns the Toplevel window."
       },
       "write_results": {
         "signature": "write_results(filepath) -> None",
