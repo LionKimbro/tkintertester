@@ -1,6 +1,6 @@
 {
   "document": {
-    "document_id": "tkintertester.with_lionscliapp.spec.v0.1",
+    "document-id": "tkintertester.with_lionscliapp.spec.v0.1",
     "title": "Using tkintertester with lionscliapp",
     "source": "with-lionscliapp.md",
     "purpose": "Define the canonical integration pattern between lionscliapp and tkintertester while preserving lifecycle separation and unified execution.",
@@ -33,7 +33,8 @@
       "tkintertester is invoked from inside the normal run command",
       "No separate test command exists",
       "Tests are optionally registered",
-      "Harness behavior is controlled via runtime flags"
+      "Harness behavior is controlled via runtime flags",
+      "The preferred hosted pattern is to always invoke harness.run_host(app_entry, flags) from the GUI command"
     ]
   },
   "lifecycle_constraints": {
@@ -48,8 +49,8 @@
     ]
   },
   "command_layout": {
-    "command": "run",
-    "description": "Single unified run command executes application and optional tests."
+    "command": "ui (or the app's one canonical GUI command)",
+    "description": "A single unified GUI command executes the application and optional tests."
   },
   "runtime_configuration": {
     "flags": {
@@ -64,17 +65,32 @@
       "runtime.tests.exit": {
         "type": "boolean",
         "meaning": "Exit program after tests complete."
+      },
+      "runtime.tests.isolated": {
+        "type": "boolean",
+        "meaning": "Required for Tk test runs in lionscliapp. Prevents accidental testing against a live data environment."
       }
     }
   },
   "integration_pattern": {
-    "description": "Unified run command that conditionally registers tests and invokes tkintertester harness.",
-    "canonical_code": "def cmd_run():\n\n    flags = \"\"\n\n    if app.ctx[\"runtime.tests.show\"]:\n        flags += \"s\"\n\n    if app.ctx[\"runtime.tests.exit\"]:\n        flags += \"x\"\n\n    if app.ctx[\"runtime.tests.enabled\"]:\n        register_tests()\n\n    harness.run_host(app_entry, flags)"
+    "description": "Unified GUI command that conditionally registers tests and always invokes tkintertester through run_host().",
+    "canonical_code": "def cmd_ui():\n    flags = app.build_tkintertester_flags()\n\n    if app.tests_enabled():\n        register_tests()\n\n    harness.set_resetfn(app_reset)\n    harness.run_host(app_entry, flags)",
+    "why_this_pattern_is_favored": [
+      "One real hosted runtime path is used for both tests and normal GUI execution.",
+      "Tests do not require a separate command or alternate entrypoint.",
+      "The same app_entry function constructs the live UI in both modes.",
+      "lionscliapp completes its own setup before tkintertester takes over the Tk lifecycle."
+    ]
   },
   "application_lifecycle_functions": {
     "app_entry": "Responsible for building UI, and GUI app initialization (post-CLI setup).",
     "app_reset": "Responsible for destroying UI, and resetting state to the start state.",
-    "reset_registration": "harness.set_resetfn(app_reset)"
+    "reset_registration": "harness.set_resetfn(app_reset)",
+    "reset_guidance": [
+      "Destroy any live toplevel or root-owned surfaces.",
+      "Clear widget dictionaries or mutable app references used by tests.",
+      "Restore the same baseline state that app_entry expects."
+    ]
   },
   "host_model": {
     "owner": "tkintertester",
@@ -104,7 +120,8 @@
       "decides command invocation",
       "builds runtime context",
       "registers tests when enabled",
-      "launches harness"
+      "launches harness",
+      "enforces Tk test isolation policy when configured"
     ],
     "tkintertester": [
       "executes tests",
@@ -115,16 +132,29 @@
   "hard_rules": [
     "Do not start Tk during declaration phase.",
     "Only one Tk mainloop per process.",
-    "tkintertester operates in single-threaded environment."
+    "tkintertester operates in single-threaded environment.",
+    "For lionscliapp Tk commands, if runtime.tests.enabled is true, runtime.tests.isolated should also be true and the invocation should use an isolated project-dir/runtime target."
   ],
   "invariants": [
-    "Exactly one run command exists for execution.",
-    "Harness is always invoked through cmd_run.",
-    "Tests modify behavior but do not change entrypoint."
+    "Exactly one canonical GUI command exists for execution.",
+    "Harness is always invoked through the application's normal GUI command.",
+    "Tests modify behavior but do not change entrypoint.",
+    "The favored pattern is to always invoke run_host() from the GUI command, whether or not tests are enabled."
   ],
   "philosophy": [
     "lionscliapp decides when execution begins.",
     "tkintertester decides what happens inside Tk.",
     "Configuration defines behavior."
-  ]
+  ],
+  "lionscliapp_helpers": {
+    "build_tkintertester_flags": {
+      "meaning": "Translate runtime.tests.show and runtime.tests.exit into tkintertester host flags."
+    },
+    "tests_enabled": {
+      "meaning": "Interpret runtime.tests.enabled as a boolean-like runtime flag."
+    }
+  },
+  "tk_single_instance_note": {
+    "summary": "When used with lionscliapp's Tk single-instance runtime, tests should still go through the same GUI command path. The host framework decides whether the invocation is a normal summonable GUI run or an isolated test run."
+  }
 }

@@ -1,3 +1,8 @@
+document-id: tkintertester.reference
+title: tkintertester Reference
+tags: tkintertester reference
+purpose: explain what the tkintertester is and how it works
+
 # tkintertester Reference
 
 A minimal, event-loop-native test harness for Tkinter GUI applications.
@@ -15,6 +20,10 @@ telling the harness what to do next.
 The application under test is created fresh before each test and torn down
 after, so tests are isolated from one another.
 
+This makes `tkintertester` especially useful for applications that already
+have a real runtime path and want tests to execute inside that same hosted Tk
+environment rather than through a separate automation stack.
+
 ---
 
 ## Concepts
@@ -26,10 +35,31 @@ root, runs all tests, and then either exits or hands control to the application
 for normal runtime. Your `entry()` function is called before each test to
 create a fresh application instance.
 
+For most real applications, especially those hosted by another runtime layer
+such as `lionscliapp`, host mode should be considered the default and
+preferred model.
+
 **Attach mode** (`attach_harness`) is for programs that already own their Tk
 root. You hand the root to the harness, it runs tests against the already-live
 application, and then steps aside. The harness never calls `entry()` or
 `reset()` and never terminates the mainloop.
+
+Attach mode is useful, but usually secondary. Prefer it when a program already
+has an unusual runtime shape that makes host mode impractical, not as the
+first integration choice.
+
+### When tkintertester is a good fit
+
+`tkintertester` is a strong fit when:
+
+- you want tests to run inside the real Tk event loop
+- your bugs are often about timing, `after(...)`, widget lifecycle, or teardown
+- you want the same hosted runtime path for both normal use and GUI tests
+- you want test steps to be ordinary Python callables that can see app state directly
+
+It is less suitable as a complete replacement for every testing style. You may
+still want plain unit tests for non-GUI logic, persistence logic, or data
+transforms that do not require a live Tk event loop.
 
 ### Step functions
 
@@ -117,6 +147,13 @@ harness.run_host(entry, "x")     # run tests, then exit
 harness.run_host(entry, "s")     # run tests, show results window, then continue
 ```
 
+Recommended way of thinking about `run_host()`:
+
+- your host framework decides whether tests are enabled
+- your application optionally registers tests
+- `run_host()` owns the Tk lifecycle once called
+- `entry()` remains the one place that builds the live UI instance
+
 ---
 
 ### `attach_harness(root, flags="")`
@@ -202,6 +239,15 @@ def reset():
 
 harness.set_resetfn(reset)
 ```
+
+In practice, a good reset function usually does three things:
+
+- destroys the live toplevel or root-owned UI surfaces
+- clears widget dictionaries or app references used by tests
+- restores app state to the same baseline that `entry()` expects
+
+If tests behave strangely across runs, the reset function is one of the first
+places to inspect.
 
 ---
 
@@ -456,3 +502,35 @@ if __name__ == "__main__":
 
     harness.print_results()
 ```
+
+---
+
+## Recommended Hosted Pattern
+
+For applications that already have a runtime host such as `lionscliapp`, this
+is a favored mental model:
+
+- the host framework decides whether this invocation is a test run
+- tests are optionally registered
+- the harness is always invoked through the normal GUI command
+- the same `app_entry` function is used for both tests and normal hosted runtime
+
+A typical pattern looks like this:
+
+```python
+def cmd_ui():
+    flags = app.build_tkintertester_flags()
+
+    if app.tests_enabled():
+        register_tests()
+
+    harness.set_resetfn(app_reset)
+    harness.run_host(app_entry, flags)
+```
+
+Why this pattern is strong:
+
+- there is one real hosted runtime path
+- tests do not require a separate command or alternate entrypoint
+- the application is still built through `app_entry`
+- `tkintertester` owns the Tk loop only after the host framework has completed its own setup
